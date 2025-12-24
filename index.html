@@ -99,8 +99,10 @@
                 <div class="inline-flex items-center justify-center w-16 h-16 bg-slate-800 rounded-full mb-3 text-slate-400">
                     <i data-lucide="user" class="w-8 h-8"></i>
                 </div>
-                <h2 id="current-player-name" class="text-2xl font-bold uppercase">Nome do Jogador</h2>
-                <p class="text-slate-400 text-sm">Pegue o dispositivo para ver seu papel</p>
+            </br>
+            <p class="text-slate-400 text-sm">Passe o dispositvo para </p>
+            <h2 id="current-player-name" class="text-2xl font-bold uppercase">Nome do Jogador</h2>
+                
             </div>
 
             <div id="card-container" onclick="toggleReveal()" class="relative h-64 w-full rounded-3xl cursor-pointer transition-all duration-500 preserve-3d">
@@ -155,8 +157,20 @@
     </div>
 
     <script>
+        const WORD_POOL = [
+            "Abajur", "Abelha", "Aeroporto", "Almofada", "Âncora", "Anel", "Antena", "Apito", "Aquário", "Arco-íris",
+            "Árvore", "Asa", "Aspirador", "Astronauta", "Automóvel", "Avestruz", "Avião", "Bacia", "Balde", "Balança",
+            "Balão", "Bambu", "Banana", "Banco", "Bandeira", "Banho", "Barco", "Barraca", "Batom", "Bateria",
+            "Bebê", "Beija-flor", "Berço", "Bicicleta", "Binóculo", "Biscoito", "Blusa", "Boca", "Bolo", "Boneca",
+            "Bota", "Botão", "Bracelete", "Brinquedo", "Bule", "Bumerangue", "Cabide", "Cachoeira", "Cadeira", "Cofre",
+            "Cajado", "Calça", "Cama", "Câmera", "Caminhão", "Campainha", "Caneca", "Caneta", "Canguru", "Canivete",
+            "Canoa", "Capa", "Capacete", "Caracol", "Caranguejo", "Carro", "Carrossel", "Carta", "Carteira", "Cartola",
+            "Carvão", "Casa", "Cascata", "Castelo", "Cavalete", "Cavalo", "Cebola", "Celular", "Cenoura", "Cerca",
+            "Cesta", "Chaleira", "Chaminé", "Champanhe", "Chapéu", "Chave", "Chicote", "Chinelo", "Chocalho", "Chocolate",
+            "Chupeta", "Chuveiro", "Cigarra", "Cinto", "Cinzeiro", "Clip", "Cobertor", "Cobra", "Coelho", "Colher"
+        ];
+
         // Configurações e Estado
-        const apiKey = "";
         let state = {
             phase: 'setup',
             numPlayers: 12,
@@ -167,7 +181,8 @@
             revealIndex: 0,
             isRevealed: false,
             selectedVotes: [],
-            isGenerating: false
+            isGenerating: false,
+            usedWords: []
         };
 
         // Inicialização
@@ -235,60 +250,25 @@
         }
 
         // --- Gemini API ---
-        async function fetchGeminiWord() {
-            if (state.isGenerating) return;
+        function fetchGeminiWord() {
+            const availableWords = WORD_POOL.filter(w => !state.usedWords.includes(w));
+            const pool = availableWords.length > 0 ? availableWords : WORD_POOL;
             
-            state.isGenerating = true;
-            const btn = document.getElementById('btn-ia');
+            const randomIndex = Math.floor(Math.random() * pool.length);
+            const word = pool[randomIndex];
+            
+            state.secretWord = word;
+            state.usedWords.push(word);
+            if (state.usedWords.length > 50) state.usedWords.shift(); // Limpa histórico antigo
+
+            document.getElementById('input-secret-word').value = word;
+            
+            // Feedback visual de sorteio
             const icon = document.getElementById('ia-icon');
-            const errorText = document.getElementById('api-error');
-            
-            btn.classList.add('animate-pulse');
-            icon.setAttribute('data-lucide', 'loader-2');
             icon.classList.add('animate-spin');
-            errorText.classList.add('hidden');
-            lucide.createIcons();
-
-            const systemPrompt = "Você é um assistente para o jogo 'Quem é o Impostor?'. Gere uma única palavra secreta em português (Brasil). A palavra deve ser um substantivo concreto, objeto, animal ou lugar comum. Retorne APENAS a palavra.";
-            const userQuery = "Gere uma palavra aleatória criativa.";
-
-            const fetchWithRetry = async (retries = 5, delay = 1000) => {
-                try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: userQuery }] }],
-                            systemInstruction: { parts: [{ text: systemPrompt }] }
-                        })
-                    });
-                    if (!response.ok) throw new Error();
-                    const data = await response.json();
-                    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-                } catch (e) {
-                    if (retries > 0) {
-                        await new Promise(r => setTimeout(r, delay));
-                        return fetchWithRetry(retries - 1, delay * 2);
-                    }
-                    throw e;
-                }
-            };
-
-            try {
-                const word = await fetchWithRetry();
-                document.getElementById('input-secret-word').value = word;
-                state.secretWord = word;
-            } catch (err) {
-                errorText.innerText = "Falha na IA. Digite manualmente.";
-                errorText.classList.remove('hidden');
-            } finally {
-                state.isGenerating = false;
-                btn.classList.remove('animate-pulse');
-                icon.setAttribute('data-lucide', 'sparkles');
-                icon.classList.remove('animate-spin');
-                lucide.createIcons();
-            }
+            setTimeout(() => icon.classList.remove('animate-spin'), 500);
         }
+        
 
         // --- Fluxo do Jogo ---
         function startGame() {
@@ -331,54 +311,61 @@
 
         // --- Fase de Revelação ---
         function renderReveal() {
-            const player = state.players[state.revealIndex];
-            document.getElementById('current-player-name').innerText = player.name;
-            
-            const cardBack = document.getElementById('card-back');
-            const iconCont = document.getElementById('role-icon-container');
-            const title = document.getElementById('role-title');
-            const detail = document.getElementById('role-detail');
-
-            iconCont.innerHTML = '';
-            const icon = document.createElement('i');
-            
-            if (player.isImpostor) {
-                cardBack.className = "absolute inset-0 rounded-3xl flex flex-col items-center justify-center backface-hidden rotate-y-180 bg-red-950 border-red-500 border-2 shadow-[0_0_30px_rgba(239,68,68,0.2)]";
-                icon.setAttribute('data-lucide', 'ghost');
-                icon.className = "w-16 h-16 text-red-500 mb-4 animate-pulse";
-                title.innerText = "IMPOSTOR";
-                title.className = "text-3xl font-black text-red-500 mb-1 italic";
-                detail.innerText = "Tente descobrir o que os inocentes estão descrevendo!";
-                detail.className = "text-red-300 px-6 text-xs uppercase text-center";
-            } else {
-                cardBack.className = "absolute inset-0 rounded-3xl flex flex-col items-center justify-center backface-hidden rotate-y-180 bg-green-950 border-green-500 border-2 shadow-[0_0_30px_rgba(34,197,94,0.2)]";
-                icon.setAttribute('data-lucide', 'check-circle-2');
-                icon.className = "w-16 h-16 text-green-500 mb-4";
-                title.innerText = player.word;
-                title.className = "text-3xl font-black text-white uppercase tracking-widest px-4 text-center";
-                detail.innerText = "SUA PALAVRA SECRETA";
-                detail.className = "text-green-400 font-bold text-[10px] uppercase tracking-widest mb-1";
-            }
-            iconCont.appendChild(icon);
-
-            // Dots
-            const dots = document.getElementById('progress-dots');
-            dots.innerHTML = '';
-            state.players.forEach((_, i) => {
-                const dot = document.createElement('div');
-                dot.className = `h-1.5 rounded-full transition-all ${i === state.revealIndex ? 'w-4 bg-red-500' : 'w-1.5 bg-slate-800'}`;
-                dots.appendChild(dot);
-            });
 
             // Reset Card
             document.getElementById('card-container').classList.remove('rotate-y-180');
             state.isRevealed = false;
             updateNextBtn();
             lucide.createIcons();
+
+            setTimeout(() => {
+                // Atualizar Conteúdo do Card 
+                const player = state.players[state.revealIndex];
+                document.getElementById('current-player-name').innerText = player.name;
+                
+                const cardBack = document.getElementById('card-back');
+                const iconCont = document.getElementById('role-icon-container');
+                const title = document.getElementById('role-title');
+                const detail = document.getElementById('role-detail');
+
+                iconCont.innerHTML = '';
+                const icon = document.createElement('i');
+                
+                if (player.isImpostor) {
+                    cardBack.className = "absolute inset-0 rounded-3xl flex flex-col items-center justify-center backface-hidden rotate-y-180 bg-red-950 border-red-500 border-2 shadow-[0_0_30px_rgba(239,68,68,0.2)]";
+                    icon.setAttribute('data-lucide', 'ghost');
+                    icon.className = "w-16 h-16 text-red-500 mb-4 animate-pulse";
+                    title.innerText = "IMPOSTOR";
+                    title.className = "text-3xl font-black text-red-500 mb-1 italic";
+                    detail.innerText = "Tente descobrir o que os inocentes estão descrevendo!";
+                    detail.className = "text-red-300 px-6 text-xs uppercase text-center";
+                } else {
+                    cardBack.className = "absolute inset-0 rounded-3xl flex flex-col items-center justify-center backface-hidden rotate-y-180 bg-green-950 border-green-500 border-2 shadow-[0_0_30px_rgba(34,197,94,0.2)]";
+                    icon.setAttribute('data-lucide', 'check-circle-2');
+                    icon.className = "w-16 h-16 text-green-500 mb-4";
+                    title.innerText = player.word;
+                    title.className = "text-3xl font-black text-white uppercase tracking-widest px-4 text-center";
+                    detail.innerText = "SUA PALAVRA SECRETA";
+                    detail.className = "text-green-400 font-bold text-[10px] uppercase tracking-widest mb-1";
+                }
+                iconCont.appendChild(icon);
+
+                // Dots
+                const dots = document.getElementById('progress-dots');
+                dots.innerHTML = '';
+                state.players.forEach((_, i) => {
+                    const dot = document.createElement('div');
+                    dot.className = `h-1.5 rounded-full transition-all ${i === state.revealIndex ? 'w-4 bg-red-500' : 'w-1.5 bg-slate-800'}`;
+                    dots.appendChild(dot);
+                });
+                
+                lucide.createIcons();
+            }, 300);
+            
         }
 
         function toggleReveal() {
-            state.isRevealed = !state.isRevealed;
+            state.isRevealed = true;
             const card = document.getElementById('card-container');
             if (state.isRevealed) card.classList.add('rotate-y-180');
             else card.classList.remove('rotate-y-180');
